@@ -1,0 +1,11 @@
+.wave-surfer-controls {
+	&-root {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	&-slider {
+		width: 100%;
+	}
+}

@@ -1,0 +1,1 @@
+export { WaveSurferMetronome } from './ui';
