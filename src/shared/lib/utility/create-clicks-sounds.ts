@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { createEffect } from 'effector';
 
 export type MetronomeOptions = {
 	duration: number; // длительность трека в секундах
@@ -11,7 +12,7 @@ export type MetronomeOptions = {
 /**
  * Генерирует Blob с метрономом, который можно передать в wavesurfer.js
  */
-export async function generateMetronomeBlob(options: MetronomeOptions): Promise<Blob> {
+export async function generateMetronomeBlob(options: MetronomeOptions): Promise<AudioBuffer> {
 	const { duration, bpm, strongClickUrl, normalClickUrl, beatSubdivision = 4 } = options;
 
 	const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -55,8 +56,10 @@ export async function generateMetronomeBlob(options: MetronomeOptions): Promise<
 		tick += 1;
 	}
 
-	return audioBufferToWavBlob(outputBuffer);
+	return outputBuffer;
 }
+
+export const generateMetronomeBlobFx = createEffect(generateMetronomeBlob);
 
 // Конвертируем AudioBuffer в WAV Blob
 function audioBufferToWavBlob(buffer: AudioBuffer): Blob {

@@ -1,1 +1,0 @@
-export { WaveSurferRecord } from './ui';

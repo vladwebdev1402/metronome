@@ -1,4 +1,3 @@
-export * from './create-wave-surfer-model';
-export * from './create-record-plugin';
-export * from './track-audio-permission';
 export * from './operators';
+export * from './track-audio-permission';
+export * from './create-audio-engine';
