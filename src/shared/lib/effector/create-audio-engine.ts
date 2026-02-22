@@ -157,19 +157,9 @@ export const createAudioEngine = ({
 				$isPaused,
 				$startAt,
 				$pausedAt,
-				$duration,
 				$offset,
 			] as const,
-			effect: ([
-				audioCtx,
-				frameCancelCb,
-				isPlaying,
-				isPaused,
-				startAt,
-				pausedAt,
-				duration,
-				offset,
-			]) => {
+			effect: ([audioCtx, frameCancelCb, isPlaying, isPaused, startAt, pausedAt, offset]) => {
 				frameCancelCb();
 
 				if (!isPlaying) return () => {};
@@ -185,10 +175,6 @@ export const createAudioEngine = ({
 
 					if (isPlaying && !isPaused) {
 						time = audioCtx.currentTime - startAt + offset;
-					}
-
-					if ($loop.getState()) {
-						time %= duration;
 					}
 
 					setTime(time);
@@ -269,7 +255,7 @@ export const createAudioEngine = ({
 		const setLoopFx = attach({
 			source: $audioBufferSourceNode,
 			effect: (audioBufferSourceNode, value: boolean) => {
-				if (audioBufferSourceNode) audioBufferSourceNode.loop = value;
+				if (audioBufferSourceNode) audioBufferSourceNode.metadata.loop = value;
 
 				return value;
 			},
@@ -293,8 +279,8 @@ export const createAudioEngine = ({
 
 		const resumeFx = attach({
 			name: 'resumeFx',
-			source: [$audioBufferSourceNode, $audioCtx, $pausedAt] as const,
-			effect: ([audioBufferSourceNode, audioCtx, pausedAt]) => {
+			source: [$audioBufferSourceNode, $audioCtx, $pausedAt, $offset] as const,
+			effect: ([audioBufferSourceNode, audioCtx, pausedAt, offset]) => {
 				if (!audioBufferSourceNode) {
 					throw new Error(`Failed to resume: AudioBufferSourceNode is null`);
 				}
@@ -305,9 +291,9 @@ export const createAudioEngine = ({
 
 				const { currentTime } = audioCtx;
 
-				audioBufferSourceNode.start(currentTime - pausedAt, pausedAt);
+				audioBufferSourceNode.start(currentTime, pausedAt + offset);
 
-				return currentTime - pausedAt;
+				return currentTime;
 			},
 		});
 
@@ -367,13 +353,14 @@ export const createAudioEngine = ({
 					stopped: false,
 					reply: false,
 					seek: false,
+					loop: false,
 				};
 
 				newSource.buffer = audioBuffer;
 
 				newSource.connect(gain);
 
-				newSource.loop = loopValue;
+				newSource.metadata.loop = loopValue;
 
 				newSource.onended = () => {
 					finished();
@@ -386,6 +373,12 @@ export const createAudioEngine = ({
 
 					if (newSource.metadata.paused) {
 						finishedByPause();
+
+						return;
+					}
+
+					if (newSource.metadata.loop && !newSource.metadata.seek) {
+						finishedByLoop();
 
 						return;
 					}
@@ -500,6 +493,12 @@ export const createAudioEngine = ({
 
 		chain(pauseFx.doneData, $pausedAt);
 
+		debug({
+			$offset,
+			$pausedAt,
+			$startAt,
+		});
+
 		sample({
 			clock: resume,
 			filter: and($isPlaying, $isPaused),
@@ -508,11 +507,21 @@ export const createAudioEngine = ({
 
 		disable(resumeFx.doneData, $isPaused);
 
-		chain(resumeFx.doneData, $pausedAt.reinit);
-
 		chain(resumeFx.doneData, $startAt);
 
 		chain(resumeFx.doneData, bindRAFToProgressFx);
+
+		sample({
+			clock: finishedByLoop,
+			target: [
+				$audioBufferSourceNode.reinit,
+				$isPaused.reinit,
+				$startAt.reinit,
+				$pausedAt.reinit,
+				$offset.reinit,
+				play,
+			],
+		});
 
 		sample({
 			clock: [finishedByStop, finishedByEnd],
@@ -524,6 +533,7 @@ export const createAudioEngine = ({
 				$pausedAt.reinit,
 				$offset.reinit,
 				$time.reinit,
+				$loop.reinit,
 			],
 		});
 
@@ -534,13 +544,6 @@ export const createAudioEngine = ({
 
 		chain(stopRAFProgressFx.doneData, $frameCancelCb.reinit);
 
-		sample({
-			clock: $time,
-			source: { duration: $duration, loopValue: $loop },
-			filter: ({ duration, loopValue }, time) => loopValue && time >= duration,
-			target: finishedByLoop,
-		});
-
 		chain(seekTo, $offset);
 
 		sample({
@@ -549,13 +552,13 @@ export const createAudioEngine = ({
 				reset: seekTo,
 			}),
 			filter: not(or($isPaused, not($isPlaying))),
-			target: [bindRAFToProgressFx, playSeekFx],
+			target: [playSeekFx, bindRAFToProgressFx],
 		});
 
 		sample({
 			clock: seekTo,
 			filter: or($isPaused, not($isPlaying)),
-			target: $time,
+			target: [$time, $pausedAt.reinit],
 		});
 
 		chain(seekTo, seekToFx);

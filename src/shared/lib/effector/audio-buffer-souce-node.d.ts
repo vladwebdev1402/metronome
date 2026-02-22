@@ -4,5 +4,6 @@ declare interface AudioBufferSourceNode {
 		stopped: boolean;
 		reply: boolean;
 		seek: boolean;
+		loop: boolean;
 	};
 }
