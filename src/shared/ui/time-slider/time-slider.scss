@@ -1,0 +1,21 @@
+@use 'shared/ui/mixins.scss' as *;
+
+@layer components {
+	.time-slider-root {
+		--slider-thumb-size: 0px;
+
+		.mantine-Slider-thumb {
+			display: none;
+		}
+
+		&:active .mantine-Slider-thumb {
+			display: flex;
+		}
+
+		@include hover {
+			.mantine-Slider-thumb {
+				display: flex;
+			}
+		}
+	}
+}
