@@ -1,4 +1,3 @@
-/* eslint-disable effector/no-getState */
 import {
 	attach,
 	createEffect,
@@ -11,7 +10,7 @@ import {
 	type Store,
 	type StoreWritable,
 } from 'effector';
-import { and, combineEvents, debug, not, or, readonly, spread } from 'patronum';
+import { and, combineEvents, not, or, readonly, spread } from 'patronum';
 import { chain, disable, enable } from './operators';
 
 export type AudioSource =
@@ -38,7 +37,6 @@ export type AudioEngine = {
 export type AudioModel = {
 	$volume: Store<number>;
 	$startAt: Store<number>;
-	$pausedAt: Store<number>;
 	$isPaused: Store<boolean>;
 	$isPlaying: Store<boolean>;
 	$ready: Store<boolean>;
@@ -62,7 +60,6 @@ export type AudioModel = {
 	'@@unitShape': () => {
 		volume: Store<number>;
 		startAt: Store<number>;
-		pausedAt: Store<number>;
 		isPaused: Store<boolean>;
 		isPlaying: Store<boolean>;
 		loop: Store<boolean>;
@@ -98,8 +95,6 @@ export const createAudioEngine = ({
 		const $volume = createStore(1);
 
 		const $startAt = createStore(0);
-
-		const $pausedAt = createStore(0);
 
 		const $time = createStore(0);
 
@@ -150,16 +145,8 @@ export const createAudioEngine = ({
 		const failure = createEvent<Error>();
 
 		const bindRAFToProgressFx = attach({
-			source: [
-				$audioCtx,
-				$frameCancelCb,
-				$isPlaying,
-				$isPaused,
-				$startAt,
-				$pausedAt,
-				$offset,
-			] as const,
-			effect: ([audioCtx, frameCancelCb, isPlaying, isPaused, startAt, pausedAt, offset]) => {
+			source: [$audioCtx, $frameCancelCb, $isPlaying, $startAt, $offset] as const,
+			effect: ([audioCtx, frameCancelCb, isPlaying, startAt, offset]) => {
 				frameCancelCb();
 
 				if (!isPlaying) return () => {};
@@ -169,13 +156,7 @@ export const createAudioEngine = ({
 				const update = () => {
 					let time = 0;
 
-					if (isPaused) {
-						time = pausedAt;
-					}
-
-					if (isPlaying && !isPaused) {
-						time = audioCtx.currentTime - startAt + offset;
-					}
+					time = audioCtx.currentTime - startAt + offset;
 
 					setTime(time);
 
@@ -279,8 +260,8 @@ export const createAudioEngine = ({
 
 		const resumeFx = attach({
 			name: 'resumeFx',
-			source: [$audioBufferSourceNode, $audioCtx, $pausedAt, $offset] as const,
-			effect: ([audioBufferSourceNode, audioCtx, pausedAt, offset]) => {
+			source: [$audioBufferSourceNode, $audioCtx, $offset] as const,
+			effect: ([audioBufferSourceNode, audioCtx, offset]) => {
 				if (!audioBufferSourceNode) {
 					throw new Error(`Failed to resume: AudioBufferSourceNode is null`);
 				}
@@ -291,7 +272,7 @@ export const createAudioEngine = ({
 
 				const { currentTime } = audioCtx;
 
-				audioBufferSourceNode.start(currentTime, pausedAt + offset);
+				audioBufferSourceNode.start(currentTime, offset);
 
 				return currentTime;
 			},
@@ -457,6 +438,8 @@ export const createAudioEngine = ({
 
 		chain(resume, createAudioBufferSourceFx);
 
+		chain(play, $offset.reinit);
+
 		chain(play, playFx);
 
 		chain(playFx.doneData, $startAt);
@@ -464,14 +447,6 @@ export const createAudioEngine = ({
 		enable(playFx.doneData, $isPlaying);
 
 		disable(playFx.doneData, $isPaused);
-
-		chain(playFx.doneData, $pausedAt.reinit);
-
-		sample({
-			clock: playFx.doneData,
-			filter: not($isPlaying),
-			target: $offset.reinit,
-		});
 
 		chain(playFx.doneData, bindRAFToProgressFx);
 
@@ -491,13 +466,7 @@ export const createAudioEngine = ({
 
 		enable(pauseFx.doneData, $isPaused);
 
-		chain(pauseFx.doneData, $pausedAt);
-
-		debug({
-			$offset,
-			$pausedAt,
-			$startAt,
-		});
+		chain(pauseFx.doneData, $offset);
 
 		sample({
 			clock: resume,
@@ -517,7 +486,6 @@ export const createAudioEngine = ({
 				$audioBufferSourceNode.reinit,
 				$isPaused.reinit,
 				$startAt.reinit,
-				$pausedAt.reinit,
 				$offset.reinit,
 				play,
 			],
@@ -530,7 +498,6 @@ export const createAudioEngine = ({
 				$isPlaying.reinit,
 				$isPaused.reinit,
 				$startAt.reinit,
-				$pausedAt.reinit,
 				$offset.reinit,
 				$time.reinit,
 				$loop.reinit,
@@ -558,7 +525,7 @@ export const createAudioEngine = ({
 		sample({
 			clock: seekTo,
 			filter: or($isPaused, not($isPlaying)),
-			target: [$time, $pausedAt.reinit],
+			target: $time,
 		});
 
 		chain(seekTo, seekToFx);
@@ -566,21 +533,6 @@ export const createAudioEngine = ({
 		chain(seekToFx.doneData, createAudioBufferSourceFx);
 
 		chain(playSeekFx.doneData, $startAt);
-
-		debug({
-			'setupFx.failData': setupFx.failData,
-			'resumeFx.failData': resumeFx.failData,
-			'pauseFx.failData': pauseFx.failData,
-			'playFx.failData': playFx.failData,
-			'stopFx.failData': stopFx.failData,
-			'stopRAFProgressFx.failData': stopRAFProgressFx.failData,
-			'createAudioBufferSourceFx.failData': createAudioBufferSourceFx.failData,
-			'setVolumeFx.failData': setVolumeFx.failData,
-			'setLoopFx.failData': setLoopFx.failData,
-			'bindRAFToProgressFx.failData': bindRAFToProgressFx.failData,
-			'seekToFx.failData': seekToFx.failData,
-			'playSeekFx.failData': playSeekFx.failData,
-		});
 
 		sample({
 			clock: [
@@ -603,7 +555,6 @@ export const createAudioEngine = ({
 		return {
 			$volume: readonly($volume),
 			$startAt: readonly($startAt),
-			$pausedAt: readonly($pausedAt),
 			$isPaused: readonly($isPaused),
 			$isPlaying: readonly($isPlaying),
 			$loop: readonly($loop),
@@ -627,7 +578,6 @@ export const createAudioEngine = ({
 			'@@unitShape': () => ({
 				volume: readonly($volume),
 				startAt: readonly($startAt),
-				pausedAt: readonly($pausedAt),
 				isPaused: readonly($isPaused),
 				isPlaying: readonly($isPlaying),
 				loop: readonly($loop),
