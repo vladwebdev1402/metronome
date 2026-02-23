@@ -183,15 +183,15 @@ export const createAudioEngine = ({
 		});
 
 		const setupFx = attach({
-			source: [$audioCtx, $src],
-			effect: async ([audioCtx, actualSrc]) => {
+			source: [$audioCtx, $gain, $src],
+			effect: async ([audioCtx, currentGain, actualSrc]) => {
 				if (actualSrc === null) {
 					throw new Error(`Failed to createAudio: src is null`);
 				}
 
-				const gain = audioCtx.createGain();
+				const gain = !currentGain ? audioCtx.createGain() : currentGain;
 
-				gain.connect(audioCtx.destination);
+				!currentGain && gain.connect(audioCtx.destination);
 
 				let audioBuffer: AudioBuffer | null = actualSrc instanceof AudioBuffer ? actualSrc : null;
 
