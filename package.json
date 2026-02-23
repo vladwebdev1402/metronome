@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"host": "vite --host",
+		"host": "vite --host --mode=localhost",
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
 		"prettier": "prettier . --check",
@@ -18,6 +18,7 @@
 		"@effector/reflect": "^10.0.2",
 		"@mantine/core": "^8.3.15",
 		"@mantine/hooks": "^8.3.15",
+		"@vitejs/plugin-basic-ssl": "^2.1.4",
 		"effector": "^23.4.4",
 		"effector-react": "^23.3.0",
 		"effector-storage": "^7.1.0",

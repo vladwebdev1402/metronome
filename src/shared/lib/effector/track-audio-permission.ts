@@ -12,15 +12,15 @@ import { chain, disable, enable } from './operators';
 export type AudioPermission = {
 	$allowed: Store<boolean>;
 	$denied: Store<boolean>;
+	$microphones: Store<MediaDeviceInfo[]>;
 	getPermission: EventCallable<void>;
 	successful: Event<MediaStream>;
 	failure: Event<Error>;
 	'@@unitShape': () => {
 		allowed: Store<boolean>;
 		denied: Store<boolean>;
+		microphones: Store<MediaDeviceInfo[]>;
 		getPermission: EventCallable<void>;
-		successful: Event<MediaStream>;
-		failure: Event<Error>;
 	};
 };
 
@@ -28,6 +28,8 @@ export const trackAudioPermission = (): AudioPermission => {
 	const $allowed = createStore(false);
 
 	const $denied = not($allowed);
+
+	const $microphones = createStore<MediaDeviceInfo[]>([]);
 
 	const getPermission = createEvent();
 
@@ -47,6 +49,14 @@ export const trackAudioPermission = (): AudioPermission => {
 		}),
 	);
 
+	const getMicrophonesFx = createEffect(async () => {
+		const allDevices = await navigator.mediaDevices.enumerateDevices();
+
+		const microphones = allDevices.filter((device) => device.kind === 'audioinput');
+
+		return microphones;
+	});
+
 	chain(getPermission, getPermissionFx);
 
 	chain(getPermissionFx.doneData, successful);
@@ -57,17 +67,21 @@ export const trackAudioPermission = (): AudioPermission => {
 
 	disable(failure, $allowed);
 
+	chain(successful, getMicrophonesFx);
+
+	chain(getMicrophonesFx.doneData, $microphones);
+
 	return {
 		$allowed,
 		$denied,
+		$microphones,
 		failure,
 		successful,
 		getPermission,
 		'@@unitShape': () => ({
 			allowed: readonly($allowed),
 			denied: $denied,
-			failure: readonly(failure),
-			successful: readonly(successful),
+			microphones: readonly($microphones),
 			getPermission,
 		}),
 	};

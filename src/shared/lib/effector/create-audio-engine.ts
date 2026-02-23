@@ -8,18 +8,13 @@ import {
 	type Event,
 	type EventCallable,
 	type Store,
-	type StoreWritable,
 } from 'effector';
 import { and, combineEvents, not, or, readonly, spread } from 'patronum';
 import { chain, disable, enable } from './operators';
 
-export type AudioSource =
-	| string
-	| AudioBuffer
-	| null
-	| StoreWritable<string | AudioBuffer | null>
-	| StoreWritable<string | null>
-	| StoreWritable<AudioBuffer | null>;
+export type AudioSourceStoreValue = string | AudioBuffer | null;
+
+export type AudioSource = string | AudioBuffer | Store<AudioSourceStoreValue>;
 
 export type CreateAudioEngineParams = {
 	setup: Event<void>;
@@ -28,6 +23,8 @@ export type CreateAudioEngineParams = {
 export type CreateAudioParams = {
 	src: AudioSource;
 	loop?: boolean;
+	latency?: number | Store<number>;
+	autoplay?: boolean | Store<boolean>;
 };
 
 export type AudioEngine = {
@@ -83,7 +80,12 @@ export const createAudioEngine = ({
 }: CreateAudioEngineParams): [AudioEngine, typeof createAudio] => {
 	const $audioCtx = createStore(new AudioContext({ sampleRate, latencyHint }));
 
-	const createAudio = ({ src, loop }: CreateAudioParams): AudioModel => {
+	const createAudio = ({
+		src,
+		loop,
+		latency = 0,
+		autoplay = false,
+	}: CreateAudioParams): AudioModel => {
 		const $audioBufferSourceNode = createStore<AudioBufferSourceNode | null>(null);
 
 		const $audioBuffer = createStore<AudioBuffer | null>(null);
@@ -111,6 +113,10 @@ export const createAudioEngine = ({
 		const $frameCancelCb = createStore<() => void>(() => {});
 
 		const $src = is.store(src) ? src : createStore(src);
+
+		const $latency = is.store(latency) ? latency : createStore(latency);
+
+		const $autoplay = is.store(autoplay) ? autoplay : createStore(autoplay);
 
 		const dispose = createEvent();
 
@@ -219,13 +225,13 @@ export const createAudioEngine = ({
 		});
 
 		const playFx = attach({
-			source: [$audioCtx, $audioBufferSourceNode, $offset] as const,
-			effect: ([audioCtx, audioBufferSourceNode, offset]) => {
+			source: [$audioCtx, $audioBufferSourceNode, $offset, $latency] as const,
+			effect: ([audioCtx, audioBufferSourceNode, offset, latencyValue]) => {
 				if (!audioBufferSourceNode) {
 					throw new Error(`Failed to play: AudioBufferSourceNode is null`);
 				}
 
-				const startAt = audioCtx.currentTime;
+				const startAt = audioCtx.currentTime + latencyValue;
 
 				audioBufferSourceNode.start(startAt, offset);
 
@@ -260,8 +266,8 @@ export const createAudioEngine = ({
 
 		const resumeFx = attach({
 			name: 'resumeFx',
-			source: [$audioBufferSourceNode, $audioCtx, $offset] as const,
-			effect: ([audioBufferSourceNode, audioCtx, offset]) => {
+			source: [$audioBufferSourceNode, $audioCtx, $offset, $latency] as const,
+			effect: ([audioBufferSourceNode, audioCtx, offset, latencyValue]) => {
 				if (!audioBufferSourceNode) {
 					throw new Error(`Failed to resume: AudioBufferSourceNode is null`);
 				}
@@ -272,7 +278,7 @@ export const createAudioEngine = ({
 
 				const { currentTime } = audioCtx;
 
-				audioBufferSourceNode.start(currentTime, offset);
+				audioBufferSourceNode.start(currentTime + latencyValue, offset);
 
 				return currentTime;
 			},
@@ -285,10 +291,7 @@ export const createAudioEngine = ({
 					!isPaused && audioBufferSourceNode.stop();
 					audioBufferSourceNode.disconnect();
 
-					audioBufferSourceNode.metadata = {
-						...audioBufferSourceNode.metadata,
-						stopped: true,
-					};
+					audioBufferSourceNode.metadata.stopped = true;
 				}
 
 				if (isPaused) finishedByStop();
@@ -335,6 +338,7 @@ export const createAudioEngine = ({
 					reply: false,
 					seek: false,
 					loop: false,
+					dispose: false,
 				};
 
 				newSource.buffer = audioBuffer;
@@ -358,13 +362,19 @@ export const createAudioEngine = ({
 						return;
 					}
 
-					if (newSource.metadata.loop && !newSource.metadata.seek) {
+					if (
+						newSource.metadata.loop &&
+						!newSource.metadata.reply &&
+						!newSource.metadata.seek &&
+						!newSource.metadata.dispose
+					) {
 						finishedByLoop();
 
 						return;
 					}
 
-					if (!newSource.metadata.reply && !newSource.metadata.seek) finishedByEnd();
+					if (!newSource.metadata.reply && !newSource.metadata.seek && !newSource.metadata.dispose)
+						finishedByEnd();
 				};
 
 				return newSource;
@@ -381,19 +391,35 @@ export const createAudioEngine = ({
 		});
 
 		const playSeekFx = attach({
-			source: [$audioBufferSourceNode, $audioCtx, $offset] as const,
-			effect: ([audioBufferSourceNode, audioCtx, offset]) => {
+			source: [$audioBufferSourceNode, $audioCtx, $offset, $latency] as const,
+			effect: ([audioBufferSourceNode, audioCtx, offset, latencyValue]) => {
 				if (!audioBufferSourceNode) {
 					throw new Error(`Failed to seek play: AudioBufferSourceNode is null`);
 				}
 
 				const { currentTime } = audioCtx;
 
-				audioBufferSourceNode.start(currentTime, offset);
+				audioBufferSourceNode.start(currentTime + latencyValue, offset);
 
 				return currentTime;
 			},
 		});
+
+		const disposeFx = attach({
+			source: [$audioBufferSourceNode],
+			effect: ([audioBufferSourceNode]) => {
+				if (audioBufferSourceNode) {
+					audioBufferSourceNode.metadata.dispose = true;
+					audioBufferSourceNode.stop();
+
+					audioBufferSourceNode.disconnect();
+				}
+			},
+		});
+
+		chain(createAudioBufferSourceFx.doneData, $audioBufferSourceNode);
+
+		chain(dispose, disposeFx);
 
 		chain(bindRAFToProgressFx.doneData, $frameCancelCb);
 
@@ -404,6 +430,13 @@ export const createAudioEngine = ({
 			target: createEffect((source: AudioBufferSourceNode) => {
 				source.metadata.reply = true;
 			}),
+		});
+
+		sample({
+			clock: $src,
+			source: $audioBufferSourceNode,
+			filter: Boolean,
+			target: [dispose, $ready.reinit],
 		});
 
 		chain($src, setupFx);
@@ -428,7 +461,11 @@ export const createAudioEngine = ({
 			}),
 		});
 
-		chain(createAudioBufferSourceFx.doneData, $audioBufferSourceNode);
+		sample({
+			clock: setupFx.doneData,
+			filter: $autoplay,
+			target: play,
+		});
 
 		chain(setVolume, setVolumeFx);
 
@@ -492,7 +529,7 @@ export const createAudioEngine = ({
 		});
 
 		sample({
-			clock: [finishedByStop, finishedByEnd],
+			clock: [finishedByStop, finishedByEnd, disposeFx.doneData],
 			target: [
 				$audioBufferSourceNode.reinit,
 				$isPlaying.reinit,
@@ -505,7 +542,7 @@ export const createAudioEngine = ({
 		});
 
 		sample({
-			clock: [finishedByPause, finishedByEnd, finishedByStop],
+			clock: [finishedByPause, finishedByEnd, finishedByStop, dispose],
 			target: stopRAFProgressFx,
 		});
 
@@ -548,6 +585,7 @@ export const createAudioEngine = ({
 				bindRAFToProgressFx.failData,
 				seekToFx.failData,
 				playSeekFx.failData,
+				disposeFx.failData,
 			],
 			target: failure,
 		});
