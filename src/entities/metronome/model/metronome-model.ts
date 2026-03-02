@@ -6,7 +6,7 @@ import {
 	createState,
 	disable,
 	enable,
-	generateMetronomeBlob,
+	generateMetronomeBuffer,
 } from 'shared/lib';
 
 const $metronomeBuffer = createStore<AudioBuffer | null>(null);
@@ -19,13 +19,13 @@ const metronomeSound = createSound({
 	autoplay: $autoplay,
 });
 
-const bpmState = createState(120);
+const bpmState = createState(60);
 
 const barsState = createState(1);
 
-const beatSubdivisionState = createState(4);
-
 const withStressClickState = createState(false);
+
+const beatPatternState = createState<number[]>([0, 0, 1, 0, 1, 1, 1]);
 
 const $beatClickUrl = createStore('/beat-click.wav');
 
@@ -35,15 +35,10 @@ const $stressClickUrl = createStore('/stress-click.wav');
 
 const setup = createEvent();
 
-const generateMetronomeBlobFx = createEffect(generateMetronomeBlob);
+const generateMetronomeBufferFx = createEffect(generateMetronomeBuffer);
 
 const paramsChanged = debounce(
-	merge([
-		bpmState.setState,
-		barsState.setState,
-		beatSubdivisionState.setState,
-		withStressClickState.setState,
-	]),
+	merge([bpmState.setState, barsState.setState, withStressClickState.setState]),
 	250,
 );
 
@@ -52,16 +47,16 @@ sample({
 	source: {
 		bpm: bpmState.$state,
 		bars: barsState.$state,
-		beatSubdivision: beatSubdivisionState.$state,
 		beatClickUrl: $beatClickUrl,
 		defaultClickUrl: $defaultClickUrl,
 		stressClickUrl: $stressClickUrl,
 		withStressClick: withStressClickState.$state,
+		ratios: beatPatternState.$state,
 	},
-	target: generateMetronomeBlobFx,
+	target: generateMetronomeBufferFx,
 });
 
-chain(generateMetronomeBlobFx.doneData, $metronomeBuffer);
+chain(generateMetronomeBufferFx.doneData, $metronomeBuffer);
 
 enable(metronomeSound.play, $autoplay);
 
@@ -73,10 +68,9 @@ export const metronomeModel = {
 	$metronomeBuffer,
 	bpmState,
 	barsState,
-	beatSubdivisionState,
 	withStressClickState,
 	paramsChanged,
-	generateMetronomeBlobFx,
+	generateMetronomeBufferFx,
 	setup,
 	metronomeSound,
 };

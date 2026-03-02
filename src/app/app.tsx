@@ -1,10 +1,16 @@
-import { MantineProvider } from '@mantine/core';
+import { MantineProvider, Stack } from '@mantine/core';
+import { MetronomeControls, MetronomePlayer, MetronomeWave } from 'entities/metronome';
 import './styles/index.scss';
-import { MetronomeControls, MetronomePlayer } from 'entities/metronome';
 
 export const App = () => (
 	<MantineProvider defaultColorScheme='dark'>
-		<MetronomeControls />
-		<MetronomePlayer label='Metronome' />
+		<Stack gap={32}>
+			<MetronomeControls />
+			<MetronomePlayer label='Metronome' />
+			<MetronomeWave
+				height={200}
+				width={1200}
+			/>
+		</Stack>
 	</MantineProvider>
 );

@@ -1,5 +1,5 @@
 import { reflect } from '@effector/reflect';
-import { Box, Slider, Stack, Switch } from '@mantine/core';
+import { Box, Slider, Stack, Switch, Text } from '@mantine/core';
 import { metronomeModel } from 'entities/metronome/model';
 
 const BpmSlider = reflect({
@@ -9,17 +9,6 @@ const BpmSlider = reflect({
 		onChange: metronomeModel.bpmState.setState,
 		min: 40,
 		max: 240,
-		step: 1,
-	},
-});
-
-const BeatSubdivisionSlider = reflect({
-	view: Slider,
-	bind: {
-		value: metronomeModel.beatSubdivisionState.$state,
-		onChange: metronomeModel.beatSubdivisionState.setState,
-		min: 1,
-		max: 6,
 		step: 1,
 	},
 });
@@ -47,9 +36,14 @@ const StressClickSwitch = reflect({
 export const MetronomeControls = () => (
 	<Box>
 		<Stack>
-			<BpmSlider />
-			<BeatSubdivisionSlider />
-			<BarsSlider />
+			<Stack gap={0}>
+				<Text>BPM</Text>
+				<BpmSlider />
+			</Stack>
+			<Stack gap={0}>
+				<Text>Bars</Text>
+				<BarsSlider />
+			</Stack>
 			<StressClickSwitch />
 		</Stack>
 	</Box>

@@ -1,2 +1,2 @@
 export { metronomeModel } from './model';
-export { MetronomePlayer, MetronomeControls } from './ui';
+export { MetronomePlayer, MetronomeControls, MetronomeWave } from './ui';
