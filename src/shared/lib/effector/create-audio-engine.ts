@@ -537,7 +537,6 @@ export const createAudioEngine = ({
 				$startAt.reinit,
 				$offset.reinit,
 				$time.reinit,
-				$loop.reinit,
 			],
 		});
 
